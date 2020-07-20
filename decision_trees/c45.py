@@ -1,93 +1,93 @@
 import math
+import logging
+
+
 class C45:
 
 	"""Creates a decision tree with C4.5 algorithm"""
-	def __init__(self, pathToData,pathToNames):
-		self.filePathToData = pathToData
-		self.filePathToNames = pathToNames
+	def __init__(self, path_to_data, path_to_names):
+		self.path_to_data = path_to_data
+		self.path_to_names = path_to_names
 		self.data = []
 		self.classes = []
-		self.numAttributes = -1 
-		self.attrValues = {}
+		self.attr_config = {}
 		self.attributes = []
 		self.tree = None
 
-	def fetchData(self):
-		with open(self.filePathToNames, "r") as file:
+	'''
+	Data are organized as follows:
+	* DATA file contains all the features and target as last column
+	* NAMES file contains all the possible target values as first line and a description of each field
+	
+	The head of the NAMES file is:
+	Iris-setosa, Iris-versicolor, Iris-virginica
+	sepal length : continuous
+	'''
+	def fetch_data(self):
+		# import configuration file
+		logging.log(logging.INFO, "Import config file: {:s}".format(self.path_to_names))
+		self.__import_config()
+
+		# not sure this is necessary
+		# TODO check if this can be refactored away
+		self.attributes = list(self.attr_config.keys())
+
+		# import actual data
+		logging.log(logging.INFO, "Import data file: {:s}".format(self.path_to_data))
+		self.__import_data()
+
+	def __import_config(self):
+		with open(self.path_to_names, "r") as file:
+			# The first line is made of all the possible classes
 			classes = file.readline()
 			self.classes = [x.strip() for x in classes.split(",")]
-			#add attributes
+			# The remaining lines are
 			for line in file:
 				[attribute, values] = [x.strip() for x in line.split(":")]
 				values = [x.strip() for x in values.split(",")]
-				self.attrValues[attribute] = values
-		self.numAttributes = len(self.attrValues.keys())
-		self.attributes = list(self.attrValues.keys())
-		with open(self.filePathToData, "r") as file:
+				self.attr_config[attribute] = values
+			file.close()
+
+	def __import_data(self):
+		with open(self.path_to_data, "r") as file:
 			for line in file:
 				row = [x.strip() for x in line.split(",")]
+				# skip empty rows
 				if row != [] or row != [""]:
 					self.data.append(row)
+			file.close()
 
-	def preprocessData(self):
+	def n_attributes(self):
+		return len(self.attr_config.keys())
+
+	def pre_process_data(self):
 		for index,row in enumerate(self.data):
-			for attr_index in range(self.numAttributes):
+			for attr_index in range(self.n_attributes()):
 				if(not self.isAttrDiscrete(self.attributes[attr_index])):
 					self.data[index][attr_index] = float(self.data[index][attr_index])
 
-	def printTree(self):
-		self.printNode(self.tree)
+	def generate_tree(self):
+		self.tree = self.__recursive_generate_tree(self.data, self.attributes)
 
-	def printNode(self, node, indent=""):
-		if not node.isLeaf:
-			if node.threshold is None:
-				#discrete
-				for index,child in enumerate(node.children):
-					if child.isLeaf:
-						print(indent + node.label + " = " + attributes[index] + " : " + child.label)
-					else:
-						print(indent + node.label + " = " + attributes[index] + " : ")
-						self.printNode(child, indent + "	")
-			else:
-				#numerical
-				leftChild = node.children[0]
-				rightChild = node.children[1]
-				if leftChild.isLeaf:
-					print(indent + node.label + " <= " + str(node.threshold) + " : " + leftChild.label)
-				else:
-					print(indent + node.label + " <= " + str(node.threshold)+" : ")
-					self.printNode(leftChild, indent + "	")
+	def __recursive_generate_tree(self, cur_data, cur_attributes):
+		allSame = self.allSameClass(cur_data)
 
-				if rightChild.isLeaf:
-					print(indent + node.label + " > " + str(node.threshold) + " : " + rightChild.label)
-				else:
-					print(indent + node.label + " > " + str(node.threshold) + " : ")
-					self.printNode(rightChild , indent + "	")
-
-
-
-	def generateTree(self):
-		self.tree = self.recursiveGenerateTree(self.data, self.attributes)
-
-	def recursiveGenerateTree(self, curData, curAttributes):
-		allSame = self.allSameClass(curData)
-
-		if len(curData) == 0:
+		if len(cur_data) == 0:
 			#Fail
 			return Node(True, "Fail", None)
 		elif allSame is not False:
 			#return a node with that class
 			return Node(True, allSame, None)
-		elif len(curAttributes) == 0:
+		elif len(cur_attributes) == 0:
 			#return a node with the majority class
-			majClass = self.getMajClass(curData)
+			majClass = self.getMajClass(cur_data)
 			return Node(True, majClass, None)
 		else:
-			(best,best_threshold,splitted) = self.splitAttribute(curData, curAttributes)
-			remainingAttributes = curAttributes[:]
+			(best,best_threshold,splitted) = self.splitAttribute(cur_data, cur_attributes)
+			remainingAttributes = cur_attributes[:]
 			remainingAttributes.remove(best)
 			node = Node(False, best, best_threshold)
-			node.children = [self.recursiveGenerateTree(subset, remainingAttributes) for subset in splitted]
+			node.children = [self.__recursive_generate_tree(subset, remainingAttributes) for subset in splitted]
 			return node
 
 	def getMajClass(self, curData):
@@ -108,7 +108,7 @@ class C45:
 	def isAttrDiscrete(self, attribute):
 		if attribute not in self.attributes:
 			raise ValueError("Attribute not listed")
-		elif len(self.attrValues[attribute]) == 1 and self.attrValues[attribute][0] == "continuous":
+		elif len(self.attr_config[attribute]) == 1 and self.attr_config[attribute][0] == "continuous":
 			return False
 		else:
 			return True
@@ -125,7 +125,7 @@ class C45:
 				#split curData into n-subsets, where n is the number of 
 				#different values of attribute i. Choose the attribute with
 				#the max gain
-				valuesForAttribute = self.attrValues[attribute]
+				valuesForAttribute = self.attr_config[attribute]
 				subsets = [[] for a in valuesForAttribute]
 				for row in curData:
 					for index in range(len(valuesForAttribute)):
@@ -176,32 +176,38 @@ class C45:
 		totalGain = impurityBeforeSplit - impurityAfterSplit
 		return totalGain
 
-	def entropy(self, dataSet):
-		S = len(dataSet)
-		if S == 0:
-			return 0
-		num_classes = [0 for i in self.classes]
-		for row in dataSet:
-			classIndex = list(self.classes).index(row[-1])
-			num_classes[classIndex] += 1
-		num_classes = [x/S for x in num_classes]
-		ent = 0
-		for num in num_classes:
-			ent += num*self.log(num)
-		return ent*-1
+	def entropy(self, data):
+		res = 0
+		freq = self.frequency(data)
+		if len(data) > 0:
+			# entropy
+			res = -1 * sum([x*C45.log(x) for x in freq])
+			# gini
+#			res = sum([x*(1-x) for x in freq])
+			# for f in freq:
+			# 	res += f*C45.log(f)
+			# res *= -1
+		return res
 
+	def frequency(self, data):
+		num_classes = len(self.classes) * [0, ]
+		for row in data:
+			class_index = list(self.classes).index(row[-1])
+			num_classes[class_index] += 1
+		return [x/len(data) for x in num_classes]
 
-	def log(self, x):
-		if x == 0:
-			return 0
-		else:
-			return math.log(x,2)
+	def log(x):
+		return 0 if x == 0 else math.log(x,2)
+
 
 class Node:
-	def __init__(self,isLeaf, label, threshold):
+	def __init__(self,is_leaf, label, threshold):
 		self.label = label
 		self.threshold = threshold
-		self.isLeaf = isLeaf
+		self.is_leaf = is_leaf
 		self.children = []
+
+
+
 
 
