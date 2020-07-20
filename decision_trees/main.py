@@ -11,6 +11,7 @@ c1.fetch_data()
 c1.pre_process_data()
 c1.generate_tree()
 
+# Visualization logic is separate
 printer = Visualizer()
 
 printer.print(c1)
